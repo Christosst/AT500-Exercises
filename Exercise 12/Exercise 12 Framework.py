@@ -349,62 +349,60 @@ class AIModelBase:
         return self.model
 
 
-class DenseAutoEncoderForColourization(AIModelBase):
-     
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-        # Autoencoder architecture
-        encoder = tf.keras.Sequential([
-            Flatten(input_shape=(32, 32,1)),
-            Dense(300, activation="relu"),  
-            Dense(100, activation="relu"),     
-            Dense(30, activation="relu"),                 
-        ])
-
-        decoder = tf.keras.Sequential([
-            Dense(100, activation="relu"),
-            Dense(32 * 32 * 3),
-            Reshape([32, 32, 3]),
-        ])
-        autoencoder = tf.keras.Sequential([encoder, decoder])
-        print(autoencoder.summary())
-        autoencoder.compile(loss="mse", optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)
-        return autoencoder
-
-class ConvAutoEncoderForColourizationV1(AIModelBase):    
-  
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-              
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        # Encoder
-        x = Conv2D(32, (3, 3), padding='same', activation='relu')(inputs)
-        x = MaxPooling2D((2, 2), padding='same')(x)
-        x = Conv2D(64, (3, 3), padding='same', activation='relu')(x)
-        encoder = MaxPooling2D((2, 2), padding='same')(x)
-        # Decoder
-        x = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
-        x = UpSampling2D((2, 2))(x)
-        x =Conv2D(32, (3, 3), padding='same', activation='relu')(x)
-        x =UpSampling2D((2, 2))(x)
-        decoder = Conv2D(3, (3, 3), padding='same', activation='sigmoid')(x)
-        # Autoencoder model
-        autoencoder = Model(inputs=inputs, outputs=decoder)
-        autoencoder.compile(loss="mse", optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)      
-        print(autoencoder.summary())
-        
-        return autoencoder
-
-class ConvAutoEncoderForColourizationV2(AIModelBase):
     
     def __init__(self, model_name="default_model"):
         super().__init__(model_name)
     def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
   
+
+        # Hyperparameters
+        kernel_size = 3
+        dropout_rate = 0.3  # Adjust as needed for regularization
+        
+        # Encoder
         inputs = Input(shape=(32, 32, 1), name="input_layer")
+        
+
+        # Encoder
+        x1 = Conv2D(32, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(inputs)  # 400 -> 200
+        x2 = Conv2D(64, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x1)  # 200 -> 100
+        x3 = Conv2D(128, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x2)  # 100 -> 50
+        x4 = Conv2D(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x3)  # 50 -> 25
+        x5 = Conv2D(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu', dilation_rate=2)(x4)  # Dilated convolution
+
+        # Decoder
+        d1 = Conv2DTranspose(128, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x5)  # 25 -> 50
+        concat1 = Concatenate()([d1, x4])  # Concatenate with encoder layer
+        d2 = Conv2DTranspose(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat1)  # 50 -> 100
+        concat2 = Concatenate()([d2, x3])  # Concatenate with encoder layer
+        d3 = Conv2DTranspose(64, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat2)  # 100 -> 200
+        concat3 = Concatenate()([d3, x2])  # Concatenate with encoder layer
+        d4 = Conv2DTranspose(32, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat3)  # 200 -> 400
+        concat4 = Concatenate()([d4, x1])  # Concatenate with encoder layer
+
+        # Output layer
+        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(concat4)
+        
+        # Model
+        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
+        autoencoder.compile(
+            loss="mse",
+            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
+            metrics=metrics
+        )
+        
+        # Summary
+        autoencoder.summary()
+        
+        return autoencoder
+
+class ConvAutoEncoderForInpaintingV1(AIModelBase):
+    
+    def __init__(self, model_name="default_model"):
+        super().__init__(model_name)
+    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
+  
+        inputs = Input(shape=(32, 32, 3), name="input_layer")
         # Encoder       
         x = Conv2D(64, (3, 3), padding='same', activation='relu')(inputs)   
         x = MaxPooling2D((2, 2), padding='same')(x)     
@@ -420,103 +418,77 @@ class ConvAutoEncoderForColourizationV2(AIModelBase):
         
         decoder = Conv2D(3, (3, 3), padding='same', activation='sigmoid')(x)
         # Autoencoder model
-        autoencoder = Model(inputs=inputs, outputs=decoder)
+        autoencoder = Model(inputs=inputs, outputs=decoder, name='ConvAutoEncoderForInpaintingV1')
         autoencoder.compile(loss="mse", optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)      
         print(autoencoder.summary())
-        
-        
         return autoencoder         
 
-class ConvAutoEncoderForColourizationV3(AIModelBase):
+
+class ConvAutoEncoderForInpaintingV2(AIModelBase):
     
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
   
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        # Encoder       
-        x = Conv2D(128, (3, 3), padding='same', activation='relu')(inputs)   
-        x = MaxPooling2D((2, 2), padding='same')(x)     
-        x = Conv2D(256, (3, 3), padding='same', activation='relu')(x)       
-        encoder = MaxPooling2D((2, 2), padding='same')(x)
-       
-        # Decoder
-        x = Conv2D(256, (3, 3), padding='same', activation='relu')(encoder)
-        x = UpSampling2D((2, 2))(x)
-        x = Conv2D(128, (3, 3), padding='same', activation='relu')(x)
-        x = UpSampling2D((2, 2))(x)
-        decoder = Conv2D(3, (3, 3), padding='same', activation='sigmoid')(x)
-        # Autoencoder model
-        autoencoder = Model(inputs=inputs, outputs=decoder)
-        autoencoder.compile(loss="mse", optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)      
-        print(autoencoder.summary())
-        
-        
-        return autoencoder         
-
-class ConvAutoEncoderForColourizationUNet1(AIModelBase):  
     def __init__(self, model_name="default_model"):
         super().__init__(model_name)
+
     def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-        kernel_size = 3            
+        
+
+        inputs = tf.keras.layers.Input(shape=(32, 32, 3), name="input_layer")
+
         # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")    
-        # First block
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
-        encoder_output1 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-       
-        # Second block
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        encoder_output2 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Third block
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        encoder_output3 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Bottleneck
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        
-        # Decoder
-        # Third block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output3])
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-           
-        # Second block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output2])
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)  
-        
-        # First block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output1])
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-          
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x)    
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(loss="mse", optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)   
-        # Summary
-        autoencoder.summary() 
-        return autoencoder     
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        x = MaxPooling2D((2, 2), padding='same')(x)
 
-class ConvAutoEncoderForColourizationUNet2(AIModelBase):
-    
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = MaxPooling2D((2, 2), padding='same')(x)
+
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = MaxPooling2D((2, 2), padding='same')(x)
+
+            # Decoder
+        x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
+        x = UpSampling2D((2, 2))(x)
+
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        x = UpSampling2D((2, 2))(x)
+
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = UpSampling2D((2, 2))(x)
+
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+
+            # Output layer
+        outputs = tf.keras.layers.Conv2D(3, (3, 3), activation='linear', padding='same')(x)
+
+            # Define the model
+        autoencoder = Model(inputs, outputs)
+
+        print(autoencoder.summary())
+        # Output
+        outputs = tf.keras.layers.Conv2D(3, (3, 3), padding='same', activation='sigmoid')(x) 
+        autoencoder = tf.keras.models.Model(inputs=inputs, outputs=outputs, name='ConvAutoEncoderForInpaintingV2') 
+        autoencoder.compile(optimizer=tf.keras.optimizers.Adam(5e-5, clipnorm=1.0), loss='mse', metrics=metrics)
+
+        print(autoencoder.summary())     
+        return autoencoder
+
+class ConvAutoEncoderForInpaintingUNet(AIModelBase):
     def __init__(self, model_name="default_model"):
         super().__init__(model_name)
     def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-        # Hyperparameters
         kernel_size = 3                
         # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
+        inputs = Input(shape=(32, 32, 3), name="input_layer")
 
         # First block
         x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
@@ -539,7 +511,7 @@ class ConvAutoEncoderForColourizationUNet2(AIModelBase):
         # Bottleneck
         x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
         x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        
+     
         # Decoder
         # Third block (reverse)
         x = UpSampling2D(size=(2, 2))(x)
@@ -560,295 +532,14 @@ class ConvAutoEncoderForColourizationUNet2(AIModelBase):
         x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
         x = Concatenate()([x, encoder_output1])
         x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        
+        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)  
         # Output layer
         outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x) 
         # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
+        autoencoder = Model(inputs, outputs, name="ConvAutoEncoderForInpaintingUNet")
         autoencoder.compile(loss="mse",optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)     
-        # Summary
         autoencoder.summary()   
         return autoencoder     
-
-class ConvAutoEncoderForColourizationUNet3(AIModelBase):
-    
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-        # Hyperparameters
-        kernel_size = (3, 3)
-        dropout_rate = 0.15
-        
-        # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        
-        # First block
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        encoder_output1 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Second block
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        encoder_output2 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Third block
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        encoder_output3 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Bottleneck
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        
-        # Decoder
-        # Third block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output3])
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        
-        # Second block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output2])
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        
-        # First block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = Concatenate()([x, encoder_output1])
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x)
-        
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(
-            loss="mse",
-            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
-            metrics=metrics
-        )
-        
-        # Summary
-        autoencoder.summary()
-        
-        
-        return autoencoder         
-
-class ConvAutoEncoderForColourizationUNet4(AIModelBase):
-    
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-        # Hyperparameters
-        kernel_size = 3        
-        
-        # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        
-        # First block
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
-        x = BatchNormalization()(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        encoder_output1 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Second block
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        encoder_output2 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Third block
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        encoder_output3 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Bottleneck
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        #x = BatchNormalization()(x)
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        
-        # Decoder
-        # Third block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Concatenate()([x, encoder_output3])
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        
-        # Second block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Concatenate()([x, encoder_output2])
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        
-        # First block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Concatenate()([x, encoder_output1])
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x)
-        
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(
-            loss="mse",
-            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
-            metrics=metrics
-        )
-        
-        # Summary
-        autoencoder.summary()
-        
-        
-        return autoencoder         
-
-class ConvAutoEncoderForColourizationUNet5(AIModelBase):
-    
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-
-        # Hyperparameters
-        kernel_size = 3
-        dropout_rate = 0.3  # Adjust as needed for regularization
-        
-        # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        
-        # First block
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output1 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Second block
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output2 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Third block
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output3 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Bottleneck
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Decoder
-        # Third block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output3])
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Second block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output2])
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # First block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output1])
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x)
-        
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(
-            loss="mse",
-            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
-            metrics=metrics
-        )
-        
-        # Summary
-        autoencoder.summary()
-        
-        return autoencoder
-
 
 
 class CreateAndRunModel:
@@ -922,20 +613,30 @@ class CreateAndRunModel:
         )
 
 
- 
+
+
+
 save_dir = os.path.join(os.getcwd(), 'my_saved_models')
 os.makedirs(save_dir, exist_ok=True)
 show_plot=True
 display_images=True
-x_train, x_test, x_train_gray, x_test_gray, x_train_color, x_val_gray, x_val_color=helpers.load_data_for_colourization(display_images,show_plot)
-epochs=1
+x_train, x_test, x_train_masked, x_test_masked, x_train_unmasked, x_val_masked, x_val_unmasked=helpers.load_data_for_restoration(display_images,show_plot)
+epochs=100
 batch_size=16
 
+
+# Our best model
+
 CreateAndRunModel.create_and_run_model(
-    ConvAutoEncoderForColourizationV2,
-    np.copy(x_train), np.copy(x_test), np.copy(x_train_gray), np.copy(x_test_gray), np.copy(x_train_color), 
-    np.copy(x_val_gray), np.copy(x_val_color), save_dir, epochs, batch_size, show_plot=show_plot
+    ConvAutoEncoderForInpaintingUNet,
+    np.copy(x_train), np.copy(x_test), np.copy(x_train_masked), np.copy(x_test_masked), np.copy(x_train_unmasked), 
+    np.copy(x_val_masked), np.copy(x_val_unmasked), save_dir, epochs, batch_size, show_plot=show_plot
 )
+
+
+
+
+
 
 
 
