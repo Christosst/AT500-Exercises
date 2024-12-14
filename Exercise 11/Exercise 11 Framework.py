@@ -742,113 +742,6 @@ class ConvAutoEncoderForColourizationUNet4(AIModelBase):
         
         return autoencoder         
 
-class ConvAutoEncoderForColourizationUNet5(AIModelBase):
-    
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-
-        # Hyperparameters
-        kernel_size = 3
-        dropout_rate = 0.3  # Adjust as needed for regularization
-        
-        # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        
-        # First block
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(inputs)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output1 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Second block
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output2 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Third block
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        encoder_output3 = x  # Save output for skip connection
-        x = MaxPooling2D(pool_size=(2, 2))(x)
-        
-        # Bottleneck
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(512, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Decoder
-        # Third block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output3])
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(256, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Second block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output2])
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(128, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # First block (reverse)
-        x = UpSampling2D(size=(2, 2))(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Concatenate()([x, encoder_output1])
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        x = Conv2D(64, kernel_size, activation="relu", padding="same")(x)
-        x = BatchNormalization()(x)
-        x = Dropout(dropout_rate)(x)
-        
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(x)
-        
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(
-            loss="mse",
-            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
-            metrics=metrics
-        )
-        
-        # Summary
-        autoencoder.summary()
-        
-        return autoencoder
-
 
 
 class CreateAndRunModel:
@@ -928,11 +821,13 @@ os.makedirs(save_dir, exist_ok=True)
 show_plot=True
 display_images=True
 x_train, x_test, x_train_gray, x_test_gray, x_train_color, x_val_gray, x_val_color=helpers.load_data_for_colourization(display_images,show_plot)
-epochs=1
-batch_size=16
 
+
+# this is our best model with the best hyper parameters but you can run any model from the ones defined above by changing the model class
+epochs=100
+batch_size=32
 CreateAndRunModel.create_and_run_model(
-    ConvAutoEncoderForColourizationV2,
+    ConvAutoEncoderForColourizationUNet2,
     np.copy(x_train), np.copy(x_test), np.copy(x_train_gray), np.copy(x_test_gray), np.copy(x_train_color), 
     np.copy(x_val_gray), np.copy(x_val_color), save_dir, epochs, batch_size, show_plot=show_plot
 )

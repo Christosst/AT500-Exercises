@@ -621,12 +621,10 @@ os.makedirs(save_dir, exist_ok=True)
 show_plot=True
 display_images=True
 x_train, x_test, x_train_masked, x_test_masked, x_train_unmasked, x_val_masked, x_val_unmasked=helpers.load_data_for_restoration(display_images,show_plot)
+
+# this is our best model with the best hyper parameters but you can run any model from the ones defined above by changing the model class
 epochs=100
 batch_size=16
-
-
-# Our best model
-
 CreateAndRunModel.create_and_run_model(
     ConvAutoEncoderForInpaintingUNet,
     np.copy(x_train), np.copy(x_test), np.copy(x_train_masked), np.copy(x_test_masked), np.copy(x_train_unmasked), 
