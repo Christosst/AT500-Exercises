@@ -234,8 +234,7 @@ class helpers:
         # Calculate elapsed time
         elapsed_time = end_time - start_time
         print(f"Grayscale conversion using skimage took {elapsed_time:.4f} seconds")
-        #helpers.display_image_grid(x_train_gray, grid_size=(20, 40), title="CIFAR-100 Gray Training Images using skimage")
-
+   
         # Normalize the images
         x_train = x_train.astype('float32') / 255.0
         x_test = x_test.astype('float32') / 255.0
@@ -261,8 +260,7 @@ class helpers:
         (x_train, _), (x_test, _) = cifar100.load_data(label_mode='fine')  # We only need the images, not the labels so we a ignoring them
         
 
-        # Show 800 images from the training dataset in a 20x40 grid just for checking
-        #helpers.display_image_grid(x_train, grid_size=(20, 40), title="CIFAR-100 Training Images")
+      
         input_shape = (32, 32, 3)
         start_time = time.time()
         random_seed=42 # Set random seed for reproducibility
@@ -273,8 +271,7 @@ class helpers:
         # Calculate elapsed time
         elapsed_time = end_time - start_time
         print(f"Masked Images {elapsed_time:.4f} seconds")
-        #helpers.display_image_grid(x_train_gray, grid_size=(20, 40), title="CIFAR-100 Gray Training Images using skimage")
-
+       
         # Normalize the images
         x_train = x_train.astype('float32') / 255.0
         x_test = x_test.astype('float32') / 255.0
@@ -286,7 +283,7 @@ class helpers:
         x_train_masked, x_val_masked, x_train_unmasked, x_val_unmasked = train_test_split(x_train_masked, x_train, test_size=0.2, random_state=42)
         
         if  displayimages:
-            # Display the grayscale
+            # Display the masked
             save_dir = os.path.join(os.getcwd(), file_path)
             helpers.display_image_grid(x_train, grid_size=(20, 40), title="CIFAR-100 Training Images",save_path=os.path.join(save_dir, f"Training Images.png"),show_plot=showplot)
             helpers.display_image_grid(x_train_masked, grid_size=(20, 40), title="CIFAR-100 Masked Training Images",save_path=os.path.join(save_dir, f"Masked Training Images.png"),show_plot=showplot)
