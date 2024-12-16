@@ -346,53 +346,6 @@ class AIModelBase:
         return self.model
 
 
-    
-    def __init__(self, model_name="default_model"):
-        super().__init__(model_name)
-    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
-  
-
-        # Hyperparameters
-        kernel_size = 3
-        dropout_rate = 0.3  # Adjust as needed for regularization
-        
-        # Encoder
-        inputs = Input(shape=(32, 32, 1), name="input_layer")
-        
-
-        # Encoder
-        x1 = Conv2D(32, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(inputs)  # 400 -> 200
-        x2 = Conv2D(64, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x1)  # 200 -> 100
-        x3 = Conv2D(128, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x2)  # 100 -> 50
-        x4 = Conv2D(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x3)  # 50 -> 25
-        x5 = Conv2D(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu', dilation_rate=2)(x4)  # Dilated convolution
-
-        # Decoder
-        d1 = Conv2DTranspose(128, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(x5)  # 25 -> 50
-        concat1 = Concatenate()([d1, x4])  # Concatenate with encoder layer
-        d2 = Conv2DTranspose(256, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat1)  # 50 -> 100
-        concat2 = Concatenate()([d2, x3])  # Concatenate with encoder layer
-        d3 = Conv2DTranspose(64, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat2)  # 100 -> 200
-        concat3 = Concatenate()([d3, x2])  # Concatenate with encoder layer
-        d4 = Conv2DTranspose(32, kernel_size=(4, 4), strides=2, padding='same', activation='relu')(concat3)  # 200 -> 400
-        concat4 = Concatenate()([d4, x1])  # Concatenate with encoder layer
-
-        # Output layer
-        outputs = Conv2D(3, kernel_size, activation="sigmoid", padding="same", name="output_layer")(concat4)
-        
-        # Model
-        autoencoder = Model(inputs, outputs, name="ColorizationAutoencoder")
-        autoencoder.compile(
-            loss="mse",
-            optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001),
-            metrics=metrics
-        )
-        
-        # Summary
-        autoencoder.summary()
-        
-        return autoencoder
-
 class ConvAutoEncoderForInpaintingV1(AIModelBase):
     
     def __init__(self, model_name="default_model"):
@@ -537,6 +490,66 @@ class ConvAutoEncoderForInpaintingUNet(AIModelBase):
         autoencoder.compile(loss="mse",optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)     
         autoencoder.summary()   
         return autoencoder     
+
+class ConvAutoEncoderForInpaintingUNet2(AIModelBase):
+    def __init__(self, model_name="default_model"):
+        super().__init__(model_name)
+    def _create_model(self,metrics=["accuracy",helpers.psnr_metric, helpers.ssim_metric]):
+        inputs = Input(shape=(32, 32, 3), name="input_layer")
+        ### [First half of the network: downsampling inputs] ###   
+        # Entry block
+        x = Conv2D(32, 3, strides=2, padding="same")(inputs)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+    
+        previous_block_activation = x  # Set aside residual
+    
+        # Blocks 1, 2, 3 are identical apart from the feature depth.
+        for filters in [64, 128, 256]:
+            x = Activation("relu")(x)
+            x = SeparableConv2D(filters, 3, padding="same")(x)
+            x = BatchNormalization()(x)
+    
+            x = Activation("relu")(x)
+            x = SeparableConv2D(filters, 3, padding="same")(x)
+            x = BatchNormalization()(x)
+    
+            x = MaxPooling2D(3, strides=2, padding="same")(x)
+    
+            # Project residual
+            residual = Conv2D(filters, 1, strides=2, padding="same")(
+                previous_block_activation
+            )
+            x = Add()([x, residual])  # Add back residual
+            previous_block_activation = x  # Set aside next residual
+    
+        ### [Second half of the network: upsampling inputs] ###
+    
+        for filters in [256, 128, 64, 32]:
+            x = Activation("relu")(x)
+            x = Conv2DTranspose(filters, 3, padding="same")(x)
+            x = BatchNormalization()(x)
+    
+            x =Activation("relu")(x)
+            x = Conv2DTranspose(filters, 3, padding="same")(x)
+            x = BatchNormalization()(x)
+    
+            x = UpSampling2D(2)(x)
+    
+            # Project residual
+            residual = UpSampling2D(2)(previous_block_activation)
+            residual = Conv2D(filters, 1, padding="same")(residual)
+            x = Add()([x, residual])  # Add back residual
+            previous_block_activation = x  # Set aside next residual
+    
+        # Add a per-pixel regression layer for RGB output
+        outputs = Conv2D(3, 3, activation="linear", padding="same")(x)
+    
+        autoencoder = Model(inputs, outputs, name="ConvAutoEncoderForInpaintingUNet2")
+        autoencoder.compile(loss="mse",optimizer=tf.keras.optimizers.Nadam(learning_rate=0.001), metrics=metrics)     
+        autoencoder.summary()   
+        return autoencoder     
+       
 
 
 class CreateAndRunModel:
